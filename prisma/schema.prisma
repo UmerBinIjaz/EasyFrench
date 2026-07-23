@@ -1,0 +1,415 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================
+// ENUMS
+// =============================================
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum QuizType {
+  QUIZ
+  EXERCISE
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  SUSPENDED
+}
+
+enum CertificateStatus {
+  PENDING
+  APPROVED
+  ISSUED
+}
+
+// =============================================
+// USER
+// =============================================
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  avatar    String?
+  bio       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  enrollments                 Enrollment[]
+  progress                    Progress[]
+  quizResults                 QuizResult[]
+  exerciseSubmissions         ExerciseSubmission[] @relation("exerciseSubmissions")
+  exerciseGraded              ExerciseSubmission[] @relation("exerciseGradedBy")
+  certificates                Certificate[]
+  coursesCreated              Course[]
+  quizzesCreated              Quiz[]
+  exercisesCreated            Exercise[] @relation("exercisesCreated")
+  announcements               Announcement[]
+  certificateTemplatesCreated  CertificateTemplate[]
+
+  @@map("users")
+}
+
+// =============================================
+// COURSE
+// =============================================
+
+model Course {
+  id          String      @id @default(cuid())
+  title       String
+  description String      @db.Text
+  status      CourseStatus @default(DRAFT)
+  imageUrl    String?
+  createdById String
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  lessons      Lesson[]
+  enrollments  Enrollment[]
+  certificates Certificate[]
+  quizzes      Quiz[]
+  exercises    Exercise[]
+  certificateTemplateId String?
+  certificateTemplate   CertificateTemplate? @relation(fields: [certificateTemplateId], references: [id])
+
+  @@map("courses")
+}
+
+// (Module layer removed — lessons are now directly under Course)
+
+// =============================================
+// LESSON
+// =============================================
+
+model Lesson {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  videoUrl    String?
+  textContent String?  @db.Text
+  pdfUrl      String?
+  order       Int      @default(0)
+  duration    Int?     // in minutes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  progress  Progress[]
+  quizzes   Quiz[]
+  exercises Exercise[]
+
+  @@map("lessons")
+}
+
+// =============================================
+// ENROLLMENT
+// =============================================
+
+model Enrollment {
+  id        String           @id @default(cuid())
+  studentId String
+  student   User             @relation(fields: [studentId], references: [id])
+  courseId  String
+  course    Course           @relation(fields: [courseId], references: [id])
+  status    EnrollmentStatus @default(ACTIVE)
+  enrolledAt DateTime        @default(now())
+  completedAt DateTime?
+
+  @@unique([studentId, courseId])
+  @@map("enrollments")
+}
+
+// =============================================
+// PROGRESS
+// =============================================
+
+model Progress {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id])
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id])
+  completed   Boolean  @default(false)
+  timeSpent   Int      @default(0) // in seconds
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([studentId, lessonId])
+  @@map("progress")
+}
+
+// =============================================
+// EXERCISE
+// =============================================
+
+model Exercise {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  courseId    String?
+  course      Course?  @relation(fields: [courseId], references: [id])
+  lessonId    String?
+  lesson      Lesson?  @relation(fields: [lessonId], references: [id])
+  createdById String
+  createdBy   User     @relation("exercisesCreated", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  questions   ExerciseQuestion[]
+  submissions ExerciseSubmission[]
+
+  @@map("exercises")
+}
+
+// =============================================
+// EXERCISE QUESTION
+// =============================================
+
+model ExerciseQuestion {
+  id            String   @id @default(cuid())
+  exerciseId    String
+  exercise      Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  question      String   @db.Text
+  options       Json     // Array of strings: ["A", "B", "C", "D"]
+  correctAnswer Int      // Index of correct option (0-based); for FILL_IN_BLANK, stores answer text encoded; for WRITING, unused
+  explanation   String?  @db.Text
+  questionType  String   @default("WRITING") // MULTIPLE_CHOICE, FILL_IN_BLANK, WRITING
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@map("exercise_questions")
+}
+
+// =============================================
+// QUIZ
+// =============================================
+
+model Quiz {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  type        QuizType @default(QUIZ)
+  courseId    String?
+  course      Course?  @relation(fields: [courseId], references: [id])
+  lessonId    String?
+  lesson      Lesson?  @relation(fields: [lessonId], references: [id])
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  timeLimit   Int?     // in minutes
+  passMark    Int      @default(60) // percentage
+  isExamPrep  Boolean  @default(false)
+  exam        String?
+  section     String?
+  level       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  questions   QuizQuestion[]
+  results     QuizResult[]
+
+  @@map("quizzes")
+}
+
+// =============================================
+// QUIZ QUESTION
+// =============================================
+
+model QuizQuestion {
+  id            String   @id @default(cuid())
+  quizId        String
+  quiz          Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  question      String   @db.Text
+  options       Json     // Array of strings: ["A", "B", "C", "D"]
+  correctAnswer Int      // Index of correct option (0-based); for FILL_IN_BLANK, stores answer text encoded; for WRITING, unused
+  explanation   String?  @db.Text
+  questionType  String   @default("WRITING") // MULTIPLE_CHOICE, FILL_IN_BLANK, WRITING, SPEAKING
+  audioUrl      String?  // URL for listening comprehension audio clips
+  passage       String?  @db.Text // Reading passage or context for comprehension questions
+  wordLimit     String?  // Word limit guidance for writing prompts, e.g. "80-120"
+  order         Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@map("quiz_questions")
+}
+
+// =============================================
+// QUIZ RESULT
+// =============================================
+
+model QuizResult {
+  id           String   @id @default(cuid())
+  studentId    String
+  student      User     @relation(fields: [studentId], references: [id])
+  quizId       String
+  quiz         Quiz     @relation(fields: [quizId], references: [id])
+  score        Int      // percentage 0-100
+  totalQuestions Int
+  correctAnswers Int
+  answers      Json     // Array of submitted answer indices
+  passed       Boolean  @default(false)
+  completedAt  DateTime @default(now())
+
+  @@map("quiz_results")
+}
+
+// =============================================
+// EXERCISE SUBMISSION
+// =============================================
+
+enum ExerciseStatus {
+  SUBMITTED
+  GRADED
+}
+
+model ExerciseSubmission {
+  id            String         @id @default(cuid())
+  studentId     String
+  student       User           @relation("exerciseSubmissions", fields: [studentId], references: [id])
+  exerciseId    String
+  exercise      Exercise       @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  answers       Json           // Array of { questionIndex: Int, answer: String }
+  scores        Json?          // Array of { questionIndex: Int, score: Int, feedback: String } (teacher grading)
+  totalScore    Int?           // Sum of all question scores
+  totalPossible Int            // Max possible score (count of questions)
+  status        ExerciseStatus @default(SUBMITTED)
+  submittedAt   DateTime       @default(now())
+  gradedAt      DateTime?
+  gradedById    String?
+  gradedBy      User?          @relation("exerciseGradedBy", fields: [gradedById], references: [id])
+
+  @@map("exercise_submissions")
+}
+
+// =============================================
+// EXAM PREP SUBMISSION
+// =============================================
+// CERTIFICATE
+// =============================================
+
+model Certificate {
+  id                String            @id @default(cuid())
+  studentId         String
+  student           User              @relation(fields: [studentId], references: [id])
+  courseId          String
+  course            Course            @relation(fields: [courseId], references: [id])
+  status            CertificateStatus @default(PENDING)
+  templateId        String?
+  template          CertificateTemplate? @relation(fields: [templateId], references: [id])
+  certificateNumber String?           @unique
+  issuedAt          DateTime?
+  approvedById      String?
+  downloadUrl       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@unique([studentId, courseId])
+  @@map("certificates")
+}
+
+// =============================================
+// CERTIFICATE TEMPLATE
+// =============================================
+
+model CertificateTemplate {
+  id               String   @id @default(cuid())
+  teacherId        String?
+  teacher          User?    @relation(fields: [teacherId], references: [id])
+  name             String
+  description      String?
+  backgroundImage  String?
+  logoImage        String?
+  signatureImage   String?
+  certificateTitle String   @default("Certificate of Completion")
+  primaryColor     String   @default("#1E3A8A")
+  fontFamily       String   @default("Roboto")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  certificates Certificate[]
+  courses      Course[]
+
+  @@map("certificate_templates")
+}
+
+// =============================================
+// WORD OF THE DAY
+// =============================================
+
+model WordOfDay {
+  id          String   @id @default(cuid())
+  word        String
+  translation String
+  definition  String
+  example     String?
+  date        DateTime @default(now())
+
+  @@map("words_of_day")
+}
+
+// =============================================
+// ANNOUNCEMENT
+// =============================================
+
+model Announcement {
+  id          String   @id @default(cuid())
+  teacherId   String
+  teacher     User     @relation(fields: [teacherId], references: [id])
+  title       String
+  body        String   @db.Text
+  courseId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("announcements")
+}
+
+// =============================================
+// TESTIMONIAL
+// =============================================
+
+model Testimonial {
+  id          String   @id @default(cuid())
+  name        String
+  role        String
+  text        String   @db.Text
+  avatar      String?  // Could be initials like "ML" or image URL
+  rating      Int      @default(5) // 1-5 stars
+  color       String?  // Background color for avatar
+  approved    Boolean  @default(false) // Admin approval flag
+  featured    Boolean  @default(false) // Featured testimonial
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("testimonials")
+}
