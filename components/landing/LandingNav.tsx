@@ -99,16 +99,9 @@ export default function LandingNav() {
           <Link
             href="/login"
             onClick={() => setOpen(false)}
-            className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors no-underline"
-          >
-            Teacher Login
-          </Link>
-          <Link
-            href="/register"
-            onClick={() => setOpen(false)}
             className="flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold text-white bg-[#1a237e] hover:bg-[#283593] transition-colors no-underline mt-1"
           >
-            Student Login
+            Login
           </Link>
         </div>
       </div>
